@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FIN-AI — Network Fraud Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script src="data.js"></script>
+<style>
+  :root{
+    --ink:#0A0A10; --panel:#15121D; --card:#1B1726; --card-border:#2E2740;
+    --text:#F1EDF7; --muted:#9A93AC;
+    --purple:#B18AFF; --purple-dim:#3A2C5C; --purple-soft:#221B33;
+    --red:#E2472B; --red-dim:#5A2B24;
+    --teal:#3FA796; --gray-node:#4A5468;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -5%, rgba(177,138,255,0.09), transparent),
+      radial-gradient(ellipse 700px 500px at 100% 10%, rgba(177,138,255,0.05), transparent),
+      var(--ink);
+    color:var(--text);font-family:'Inter',sans-serif;line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{font-family:'Outfit',sans-serif;font-weight:600;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  ::selection{background:var(--purple-dim);color:#fff;}
+
+  /* custom scrollbars */
+  ::-webkit-scrollbar{width:7px;height:7px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--card-border);border-radius:10px;}
+  ::-webkit-scrollbar-thumb:hover{background:#453A5C;}
+
+  header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 24px;border-bottom:1px solid var(--card-border);
+    background:rgba(21,18,29,0.92);backdrop-filter:blur(10px);
+    box-shadow:0 4px 24px rgba(0,0,0,0.3);
+  }
+  .brand{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:600;letter-spacing:-0.01em;}
+  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--purple);box-shadow:0 0 10px rgba(177,138,255,0.7);}
+  .status{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;}
+  .status .live{width:7px;height:7px;border-radius:50%;background:var(--teal);display:inline-block;box-shadow:0 0 8px rgba(63,167,150,0.7);animation:livePulse 2s ease-in-out infinite;}
+  @keyframes livePulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+
+  main{max-width:1360px;margin:0 auto;padding:24px;}
+
+  /* OVERVIEW */
+  .overview{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:24px;}
+  @media(min-width:800px){.overview{grid-template-columns:repeat(6,1fr);}}
+  .stat{
+    background:var(--card);border:1px solid var(--card-border);border-radius:14px;
+    padding:16px;position:relative;overflow:hidden;
+    transition:transform .18s ease, border-color .18s ease;
+  }
+  .stat:hover{transform:translateY(-2px);border-color:#453A5C;}
+  .stat::before{
+    content:"";position:absolute;top:0;left:0;right:0;height:2px;
+    background:var(--gray-node);opacity:.5;
+  }
+  .stat.warn::before{background:var(--red);opacity:.8;}
+  .stat.impact::before{background:var(--teal);opacity:.8;}
+  .stat .val{font-family:'Outfit',sans-serif;font-weight:700;font-size:25px;letter-spacing:-0.01em;}
+  .stat .lbl{font-size:11.5px;color:var(--muted);margin-top:5px;}
+  .stat.warn .val{color:var(--red);}
+
+  /* MAIN GRID */
+  .grid{display:grid;gap:16px;grid-template-columns:1fr;}
+  @media(min-width:1050px){.grid{grid-template-columns:2fr 1fr;}}
+
+  .panel{
+    background:var(--card);border:1px solid var(--card-border);border-radius:14px;
+    overflow:hidden;box-shadow:0 8px 28px rgba(0,0,0,0.22);
+  }
+  .panel-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 18px;border-bottom:1px solid var(--card-border);
+    background:rgba(255,255,255,0.012);
+  }
+  .panel-head h2{font-size:15.5px;font-family:'Outfit',sans-serif;font-weight:600;letter-spacing:-0.005em;display:flex;align-items:center;gap:8px;}
+  .ph-icon{width:15px;height:15px;flex-shrink:0;color:var(--purple);}
+  .legend{display:flex;gap:12px;font-size:11px;color:var(--muted);}
+  .legend span{display:flex;align-items:center;gap:5px;}
+  .lgd{width:9px;height:9px;border-radius:2px;display:inline-block;}
+
+  #network{height:520px;background:#12172400;}
+
+  /* AI SIDEBAR */
+  .ai-panel .panel-head{background:linear-gradient(90deg, rgba(177,138,255,0.10), transparent);}
+  .ai-note{padding:12px 18px;font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--card-border);}
+  .risk-list{max-height:480px;overflow-y:auto;}
+  .risk-item{
+    display:flex;align-items:center;gap:10px;padding:11px 18px;
+    border-bottom:1px solid var(--card-border);cursor:pointer;
+    transition:background .15s ease, padding-left .15s ease;
+  }
+  .risk-item:hover{background:#211C2E;padding-left:22px;}
+  .risk-rank{font-family:'IBM Plex Mono';font-size:11px;color:var(--muted);width:20px;}
+  .risk-bar-wrap{flex:1;}
+  .risk-id{font-family:'IBM Plex Mono';font-size:12.5px;margin-bottom:4px;}
+  .risk-bar-bg{height:4px;background:#2A3348;border-radius:2px;overflow:hidden;}
+  .risk-bar-fill{height:100%;background:linear-gradient(90deg,#C9622F,var(--red));border-radius:2px;}
+  .risk-score{font-family:'IBM Plex Mono';font-size:12px;color:var(--red);width:40px;text-align:right;}
+
+  /* DETAIL / SEARCH PANEL */
+  .detail-panel{margin-top:16px;}
+  .search-row{display:flex;gap:10px;padding:16px 18px;border-bottom:1px solid var(--card-border);}
+  .search-row input{
+    flex:1;background:var(--panel);border:1px solid var(--card-border);border-radius:10px;
+    padding:10px 14px;color:var(--text);font-family:'IBM Plex Mono';font-size:13px;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  .search-row input:focus{outline:none;border-color:var(--purple);box-shadow:0 0 0 3px rgba(177,138,255,0.15);}
+  .search-row button{
+    background:var(--purple);color:#0A0A10;border:none;border-radius:10px;padding:10px 20px;
+    font-size:13px;font-weight:600;cursor:pointer;transition:background .15s, transform .1s;
+  }
+  .search-row button:hover{background:#c3a3ff;transform:translateY(-1px);}
+  .search-row button:active{transform:translateY(0);}
+
+  .detail-body{padding:20px;display:none;}
+  .detail-body.show{display:block;}
+  .detail-empty{padding:40px 20px;text-align:center;color:var(--muted);font-size:13.5px;}
+
+  .detail-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap;gap:10px;}
+  .detail-id{font-family:'Outfit',sans-serif;font-weight:700;font-size:25px;letter-spacing:-0.01em;}
+  .badge{font-family:'IBM Plex Mono';font-size:11.5px;padding:6px 12px;border-radius:20px;font-weight:500;}
+  .badge.high{background:var(--red-dim);color:#F5B4A6;box-shadow:0 0 0 1px rgba(226,71,43,0.25) inset;}
+  .badge.low{background:#1D3A35;color:#7FCFC0;box-shadow:0 0 0 1px rgba(63,167,150,0.25) inset;}
+
+  .kv-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:18px;}
+  @media(min-width:600px){.kv-grid{grid-template-columns:repeat(4,1fr);}}
+  .kv{background:var(--panel);border:1px solid var(--card-border);border-radius:11px;padding:12px;transition:border-color .15s;}
+  .kv:hover{border-color:#453A5C;}
+  .kv .k{font-size:11px;color:var(--muted);margin-bottom:3px;}
+  .kv .v{font-family:'IBM Plex Mono';font-size:14px;}
+
+  .conn-section h3{font-size:12.5px;font-weight:600;margin:16px 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  .conn-list{display:flex;flex-wrap:wrap;gap:8px;}
+  .conn-chip{
+    font-family:'IBM Plex Mono';font-size:12px;background:var(--panel);
+    border:1px solid var(--card-border);border-radius:8px;padding:5px 11px;
+    transition:border-color .15s, background .15s;
+  }
+  .conn-chip:hover{border-color:var(--purple);background:var(--purple-soft);}
+  .conn-chip.acc{border-color:#4A2E2A;color:#E8ECF4;}
+  .conn-chip.acc:hover{border-color:#6B3A32;background:var(--red-dim);}
+  .ring-alert{
+    margin-top:16px;background:var(--red-dim);border-radius:10px;padding:13px 15px;
+    font-size:13px;color:#F5B4A6;border-left:3px solid var(--red);
+  }
+
+  /* RINGS SECTION */
+  .rings-panel{margin-top:16px;}
+  .ring-card{padding:16px 18px;border-bottom:1px solid var(--card-border);transition:background .15s;}
+  .ring-card:hover{background:rgba(255,255,255,0.012);}
+  .ring-card:last-child{border-bottom:none;}
+  .ring-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+  .ring-title{font-size:13.5px;font-weight:600;}
+  .ring-meta{font-family:'IBM Plex Mono';font-size:11.5px;color:var(--muted);}
+  .ring-members{display:flex;flex-wrap:wrap;gap:6px;}
+  .ring-chip{
+    font-family:'IBM Plex Mono';font-size:11.5px;background:var(--red-dim);color:#F5B4A6;
+    padding:4px 10px;border-radius:20px;cursor:pointer;transition:transform .1s, background .15s;
+  }
+  .ring-chip:hover{background:#6B372E;transform:translateY(-1px);}
+
+  /* IMPACT STAT */
+  .stat.impact .val{color:var(--teal);}
+
+  /* LIVE FEED */
+  .feed-panel{margin-top:16px;}
+  .feed-list{max-height:280px;overflow-y:auto;}
+  .feed-row{
+    display:flex;align-items:center;gap:12px;padding:10px 18px;
+    border-bottom:1px solid var(--card-border);font-size:12.5px;
+    animation:feedIn .35s ease;transition:background .15s;
+  }
+  .feed-row:hover{background:rgba(255,255,255,0.015);}
+  @keyframes feedIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+  .feed-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);flex-shrink:0;box-shadow:0 0 6px rgba(63,167,150,0.6);}
+  .feed-row.risky .feed-dot{background:var(--red);box-shadow:0 0 6px rgba(226,71,43,0.6);}
+  .feed-text{flex:1;font-family:'IBM Plex Mono';color:var(--muted);}
+  .feed-text strong{color:var(--text);font-weight:500;}
+  .feed-row.risky .feed-text strong{color:#F5B4A6;}
+  .feed-time{font-family:'IBM Plex Mono';font-size:11px;color:var(--muted);white-space:nowrap;}
+  .feed-badge{
+    font-family:'IBM Plex Mono';font-size:10.5px;background:var(--red-dim);color:#F5B4A6;
+    padding:2px 7px;border-radius:4px;flex-shrink:0;font-weight:500;letter-spacing:.02em;
+  }
+
+  /* AI NARRATIVE BOX */
+  .narrative-box{
+    background:linear-gradient(135deg, rgba(177,138,255,0.10), rgba(177,138,255,0.02));
+    border:1px solid var(--card-border);border-radius:12px;padding:17px;margin:16px 0;
+    border-left:3px solid var(--purple);
+  }
+  .narrative-label{
+    font-family:'IBM Plex Mono';font-size:10.5px;color:var(--purple);margin-bottom:9px;
+    display:flex;align-items:center;gap:6px;letter-spacing:.06em;font-weight:500;
+  }
+  .narrative-text{font-size:14px;line-height:1.7;color:var(--text);}
+
+  /* RING TIMELINE */
+  .ring-timeline{margin-top:14px;padding-top:14px;border-top:1px solid var(--card-border);}
+  .ring-timeline-label{font-size:11px;color:var(--muted);margin-bottom:10px;font-family:'IBM Plex Mono';}
+  .timeline-track{position:relative;height:26px;background:var(--panel);border-radius:8px;border:1px solid var(--card-border);}
+  .timeline-dot{
+    position:absolute;top:50%;transform:translate(-50%,-50%);
+    width:8px;height:8px;border-radius:50%;background:var(--red);
+    border:1.5px solid #0F1420;box-shadow:0 0 5px rgba(226,71,43,0.5);
+    transition:transform .15s;
+  }
+  .timeline-dot:hover{transform:translate(-50%,-50%) scale(1.6);}
+
+  /* WHAT-IF SIMULATOR */
+  .whatif-box{
+    background:var(--panel);border:1px solid var(--card-border);border-radius:12px;
+    padding:18px;margin:16px 0;
+  }
+  .whatif-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
+  .whatif-title{font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:6px;}
+  .whatif-note{font-size:11.5px;color:var(--muted);margin-bottom:18px;line-height:1.55;}
+  .whatif-row{margin-bottom:16px;}
+  .whatif-row:last-of-type{margin-bottom:18px;}
+  .whatif-label{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:9px;}
+  .whatif-label span:last-child{font-family:'IBM Plex Mono';color:var(--text);font-weight:500;}
+  .whatif-row input[type=range]{
+    width:100%;-webkit-appearance:none;height:4px;border-radius:2px;
+    background:var(--card-border);outline:none;
+  }
+  .whatif-row input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+    background:var(--purple);cursor:pointer;border:2px solid #0A0A10;
+    box-shadow:0 0 0 3px rgba(177,138,255,0.18);transition:box-shadow .15s;
+  }
+  .whatif-row input[type=range]::-webkit-slider-thumb:hover{box-shadow:0 0 0 6px rgba(177,138,255,0.24);}
+  .whatif-result{
+    display:flex;align-items:center;justify-content:space-between;
+    background:var(--card);border-radius:10px;padding:15px 17px;border:1px solid var(--card-border);
+  }
+  .whatif-result .lbl{font-size:11.5px;color:var(--muted);}
+  .whatif-result .score{font-family:'Outfit',sans-serif;font-weight:700;font-size:29px;transition:color .2s;}
+  .whatif-delta{font-family:'IBM Plex Mono';font-size:12px;margin-top:4px;}
+  .whatif-delta.up{color:var(--red);}
+  .whatif-delta.flat{color:var(--muted);}
+
+  footer{text-align:center;color:var(--muted);font-size:12px;padding:30px 0;}
+
+  /* BANK-WISE BREAKDOWN */
+  .bank-panel{margin-top:16px;}
+  .bank-list{padding:8px 18px 16px;}
+  .bank-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--card-border);}
+  .bank-row:last-child{border-bottom:none;}
+  .bank-code-badge{
+    font-family:'IBM Plex Mono';font-size:11px;color:var(--muted);width:52px;flex-shrink:0;
+  }
+  .bank-info{flex:1;min-width:0;}
+  .bank-name-row{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px;gap:8px;}
+  .bank-name-row .n{font-weight:500;}
+  .bank-name-row .meta{font-family:'IBM Plex Mono';color:var(--muted);white-space:nowrap;}
+  .bank-bar-bg{height:5px;background:#2A3348;border-radius:3px;overflow:hidden;}
+  .bank-bar-fill{height:100%;background:linear-gradient(90deg,#3FA796,#5C9E8A);border-radius:3px;}
+  .bank-rate{font-family:'IBM Plex Mono';font-size:12.5px;color:var(--red);width:46px;text-align:right;flex-shrink:0;}
+
+  /* RING MINI NETWORK GRAPHS */
+  .ring-network{
+    margin-top:14px;height:220px;background:var(--panel);border-radius:8px;
+    border:1px solid var(--card-border);
+  }
+  .ring-network.small{height:140px;}
+  .ring-hint{font-size:10.5px;color:var(--muted);margin-top:8px;font-family:'IBM Plex Mono';}
+
+  /* ============ LANDING SCREEN ============ */
+  .landing-overlay{
+    position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;padding:32px;
+    background:
+      radial-gradient(ellipse 900px 600px at 20% 0%, rgba(177,138,255,0.14), transparent),
+      radial-gradient(ellipse 800px 600px at 85% 100%, rgba(177,138,255,0.08), transparent),
+      var(--ink);
+  }
+  .landing-logo{margin-bottom:22px;}
+  .landing-logo svg{width:64px;height:64px;}
+  .landing-title{
+    font-family:'Outfit',sans-serif;font-weight:800;letter-spacing:-0.03em;
+    font-size:clamp(56px,11vw,120px);line-height:0.95;color:var(--text);
+  }
+  .landing-title .accent{color:var(--purple);}
+  .landing-sub{
+    margin-top:8px;font-family:'IBM Plex Mono';font-size:12.5px;letter-spacing:.14em;
+    color:var(--muted);
+  }
+  .landing-tagline{
+    max-width:560px;margin:26px 0 38px;font-size:15.5px;line-height:1.75;color:#C4BEDA;
+  }
+  .landing-cta{
+    background:var(--purple);color:#0A0A10;border:none;border-radius:14px;
+    padding:15px 32px;font-size:14.5px;font-weight:600;cursor:pointer;
+    font-family:'Inter';transition:background .18s ease, transform .12s ease;
+    box-shadow:0 10px 30px rgba(177,138,255,0.28);
+  }
+  .landing-cta:hover{background:#c3a3ff;transform:translateY(-2px);}
+  .landing-cta:active{transform:translateY(0);}
+  .landing-footer{
+    position:absolute;bottom:26px;left:0;right:0;font-size:12px;color:var(--muted);
+  }
+  .landing-footer strong{color:#C4BEDA;font-weight:600;letter-spacing:.03em;}
+
+  /* ============ TAB NAVIGATION ============ */
+  .brand-block{display:flex;align-items:center;gap:11px;}
+  .brand-title{font-family:'Outfit',sans-serif;font-size:16.5px;font-weight:700;letter-spacing:-0.01em;}
+  .brand-title .accent{color:var(--purple);}
+  .topbar{position:sticky;top:0;z-index:100;}
+  .tabbar{
+    display:flex;gap:6px;overflow-x:auto;padding:12px 24px;
+    border-bottom:1px solid var(--card-border);background:rgba(21,18,29,0.85);
+    backdrop-filter:blur(10px);
+  }
+  .tab-btn{
+    flex-shrink:0;display:flex;align-items:center;gap:7px;
+    background:rgba(255,255,255,0.03);border:1px solid transparent;color:var(--muted);
+    font-family:'Inter';font-size:13px;font-weight:500;padding:8px 16px;
+    border-radius:999px;cursor:pointer;transition:background .15s, color .15s, border-color .15s;
+    white-space:nowrap;
+  }
+  .tab-btn svg{width:14px;height:14px;flex-shrink:0;opacity:.85;}
+  .tab-btn:hover{color:var(--text);background:rgba(255,255,255,0.06);}
+  .tab-btn.active{color:#0A0A10;background:var(--purple);font-weight:600;}
+  .tab-btn.active svg{opacity:1;}
+  .tab-section{display:none;}
+  .tab-section.visible{display:block;}
+
+  .section-title{margin-bottom:16px;}
+  .section-title h1{font-family:'Outfit',sans-serif;font-size:21px;font-weight:600;letter-spacing:-0.01em;}
+  .section-title p{font-size:13px;color:var(--muted);margin-top:5px;max-width:620px;line-height:1.55;}
+
+  /* Rings risk threshold filter */
+  .filter-box{
+    background:var(--card);border:1px solid var(--card-border);border-radius:14px;
+    padding:17px 18px;margin-bottom:16px;
+  }
+  .filter-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;}
+  .filter-head .t{font-size:13px;font-weight:600;}
+  .filter-head .n{font-family:'IBM Plex Mono';font-size:12px;color:var(--muted);}
+  .filter-row input[type=range]{
+    width:100%;-webkit-appearance:none;height:4px;border-radius:2px;
+    background:linear-gradient(90deg,#5C9E8A,var(--red));outline:none;
+  }
+  .filter-row input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+    background:#fff;cursor:pointer;border:2px solid var(--purple);
+    box-shadow:0 0 0 3px rgba(177,138,255,0.18);
+  }
+  .filter-scale{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);
+    font-family:'IBM Plex Mono';margin-top:8px;}
+
+  /* Standalone simulator account picker */
+  .sim-account{padding:16px 18px;border-bottom:1px solid var(--card-border);}
+  .sim-summary{
+    display:none;margin:14px 18px 0;padding:12px 14px;background:var(--panel);
+    border:1px solid var(--card-border);border-radius:11px;font-size:12.5px;
+    justify-content:space-between;align-items:center;
+  }
+  .sim-summary.show{display:flex;}
+  .sim-summary .id{font-family:'IBM Plex Mono';font-size:14px;}
+  .sim-summary .meta{color:var(--muted);font-size:11.5px;margin-top:3px;}
+  .sim-body{padding:20px;display:none;}
+  .sim-body.show{display:block;}
+
+  /* header logo mark */
+  .brand-logo{width:26px;height:26px;flex-shrink:0;}
+</style>
+</head>
+<body>
+
+<!-- ============ LANDING SCREEN ============ -->
+<div class="landing-overlay" id="landing">
+  <div class="landing-logo">
+    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="32" cy="14" r="6" fill="#B18AFF"/>
+      <circle cx="14" cy="42" r="5" fill="#4A5468"/>
+      <circle cx="50" cy="42" r="5" fill="#4A5468"/>
+      <circle cx="32" cy="54" r="4.5" fill="#3FA796"/>
+      <path d="M32 20 L16 38 M32 20 L48 38 M18 44 L30 52 M46 44 L34 52 M17 41 L47 41" stroke="#3A2C5C" stroke-width="1.6"/>
+    </svg>
+  </div>
+  <h1 class="landing-title">FIN<span class="accent">AI</span></h1>
+  <div class="landing-sub">UPI FRAUD NETWORK INTELLIGENCE</div>
+  <p class="landing-tagline">
+    FINAI applies graph-based machine learning to India's UPI transaction data to uncover
+    coordinated fraud networks as they form — mapping the shared accounts, banks, devices
+    and locations that tie fraud rings together, and scoring every account's likelihood of
+    being part of one, in real time.
+  </p>
+  <button class="landing-cta" id="getStartedBtn">Get started with UPI transactions →</button>
+  <div class="landing-footer">Created by <strong>NEURAL NEXUS</strong></div>
+</div>
+
+<div id="appRoot">
+
+<div class="topbar">
+  <header>
+    <div class="brand-block">
+      <svg class="brand-logo" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="32" cy="14" r="6" fill="#B18AFF"/>
+        <circle cx="14" cy="42" r="5" fill="#4A5468"/>
+        <circle cx="50" cy="42" r="5" fill="#4A5468"/>
+        <circle cx="32" cy="54" r="4.5" fill="#3FA796"/>
+        <path d="M32 20 L16 38 M32 20 L48 38 M18 44 L30 52 M46 44 L34 52 M17 41 L47 41" stroke="#4A3E68" stroke-width="1.8"/>
+      </svg>
+      <div class="brand-title">UPI Fraud Networks Associated <span class="accent">— FINAI</span></div>
+    </div>
+    <div class="status"><span class="live"></span>Model loaded · <span id="dataStamp" class="mono"></span></div>
+  </header>
+
+  <nav class="tabbar" id="tabbar">
+    <button class="tab-btn" data-target="sec-network"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2.3"/><circle cx="18" cy="6" r="2.3"/><circle cx="12" cy="18" r="2.6"/><path d="M7.8 7.4 10.5 15.5M16.2 7.4 13.5 15.5M8.3 6H15.7"/></svg> Fraud Network</button>
+    <button class="tab-btn" data-target="sec-live"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg> Live Analytics</button>
+    <button class="tab-btn" data-target="sec-ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.5 5.5l2.5 2.5M18.5 5.5 16 8M5.5 18.5 8 16M18.5 18.5 16 16"/></svg> AI Analysis</button>
+    <button class="tab-btn" data-target="sec-rings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></svg> Rings</button>
+    <button class="tab-btn" data-target="sec-simulator"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h9M4 17h6"/><circle cx="16" cy="7" r="2"/><circle cx="13" cy="17" r="2"/></svg> What-If Simulator</button>
+    <button class="tab-btn" data-target="sec-banks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10 12 4l9 6M5 10v9M19 10v9M9 10v9M15 10v9M3 19h18"/></svg> Bank Breakdown</button>
+  </nav>
+</div>
+
+<main>
+
+  <!-- =================== 1. FRAUD NETWORK =================== -->
+  <section class="tab-section" id="sec-network">
+    <div class="section-title">
+      <h1>Fraud Network Overview</h1>
+      <p>Aggregate account, device, merchant and location statistics — including the share of accounts flagged as fraudulent — plus the live graph connecting every entity in the dataset.</p>
+    </div>
+
+    <div class="overview" id="overview"></div>
+
+    <div class="grid">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Live Account Network</h2>
+          <div class="legend">
+            <span><span class="lgd" style="background:var(--red)"></span>high risk</span>
+            <span><span class="lgd" style="background:var(--gray-node)"></span>account</span>
+            <span><span class="lgd" style="background:#5C7A9E"></span>device</span>
+            <span><span class="lgd" style="background:#8A8347"></span>merchant</span>
+            <span><span class="lgd" style="background:#5C9E8A"></span>location</span>
+          </div>
+        </div>
+        <div id="network"></div>
+      </div>
+
+      <div class="panel ai-panel">
+        <div class="panel-head"><h2><svg class="ph-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" stroke-linejoin="round"/></svg> AI Risk Ranking</h2></div>
+        <div class="ai-note">Ranked by model-predicted fraud probability, highest risk first. Click any account to inspect it in AI Analysis.</div>
+        <div class="risk-list" id="riskList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== 2. LIVE ANALYTICS =================== -->
+  <section class="tab-section" id="sec-live">
+    <div class="section-title">
+      <h1>Live Analytics</h1>
+      <p>A real-time stream of UPI transfers and merchant payments across the network, with fraud-model flags applied as each transaction lands.</p>
+    </div>
+    <div class="panel feed-panel">
+      <div class="panel-head">
+        <h2><svg class="ph-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg> Live Transaction Stream</h2>
+        <div class="legend"><span><span class="lgd" style="background:var(--teal)"></span>normal</span><span><span class="lgd" style="background:var(--red)"></span>flagged</span></div>
+      </div>
+      <div class="feed-list" id="feedList" style="max-height:560px;"></div>
+    </div>
+  </section>
+
+  <!-- =================== 3. AI ANALYSIS =================== -->
+  <section class="tab-section" id="sec-ai">
+    <div class="section-title">
+      <h1>AI Analysis</h1>
+      <p>Look up any account to get its full model breakdown: risk score, connected devices, merchants, locations, transfer links, and the AI's plain-language reasoning for why it was flagged.</p>
+    </div>
+    <div class="panel detail-panel" style="margin-top:0;">
+      <div class="panel-head"><h2>Investigate an Account</h2></div>
+      <div class="search-row">
+        <input type="text" id="searchInput" placeholder="Enter account ID, e.g. A102" list="acctList">
+        <datalist id="acctList"></datalist>
+        <button onclick="runSearch()">Analyze</button>
+      </div>
+      <div class="detail-empty" id="detailEmpty">Enter an account ID above, or click a node / risk-list entry to see full account intelligence — risk score, transfers, devices, merchants, locations, and any fraud ring membership.</div>
+      <div class="detail-body" id="detailBody"></div>
+    </div>
+  </section>
+
+  <!-- =================== 4. RINGS =================== -->
+  <section class="tab-section" id="sec-rings">
+    <div class="section-title">
+      <h1>Fraud Rings</h1>
+      <p>Groups of accounts the model believes are operating together. Slide the threshold to move from every detected ring down to only the highest-severity ones, then click any dot in a ring to open that account.</p>
+    </div>
+
+    <div class="filter-box">
+      <div class="filter-head">
+        <span class="t">Minimum ring risk severity</span>
+        <span class="n" id="ringThreshLbl">Showing all rings — 0%+</span>
+      </div>
+      <div class="filter-row">
+        <input type="range" id="ringThresh" min="0" max="95" value="0" step="5" oninput="onRingThreshChange()">
+      </div>
+      <div class="filter-scale"><span>Low risk</span><span>High risk</span></div>
+    </div>
+
+    <div class="panel rings-panel" style="margin-top:0;">
+      <div class="panel-head"><h2><svg class="ph-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 2 20h20L12 2z" stroke-linejoin="round"/><path d="M12 9v5M12 17.5v.01"/></svg> Detected Fraud Rings & Alerts</h2></div>
+      <div id="ringsList"></div>
+    </div>
+  </section>
+
+  <!-- =================== 5. WHAT-IF SIMULATOR =================== -->
+  <section class="tab-section" id="sec-simulator">
+    <div class="section-title">
+      <h1>What-If Risk Simulator</h1>
+      <p>Load any account and test how additional risk signals — shared devices, rapid outbound transfers — would shift its fraud score. Illustrative, not a live re-run of the trained GNN.</p>
+    </div>
+    <div class="panel" style="margin-top:0;">
+      <div class="panel-head"><h2><svg class="ph-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h9M4 17h6"/><circle cx="16" cy="7" r="2"/><circle cx="13" cy="17" r="2"/></svg> Load an Account to Simulate</h2></div>
+      <div class="sim-account">
+        <div class="search-row" style="padding:0;border-bottom:none;">
+          <input type="text" id="simInput" placeholder="Enter account ID, e.g. A102" list="acctList">
+          <button onclick="loadSimAccount()">Load</button>
+        </div>
+      </div>
+      <div class="sim-summary" id="simSummary">
+        <div>
+          <div class="id" id="simSummaryId">—</div>
+          <div class="meta" id="simSummaryMeta"></div>
+        </div>
+        <div class="badge" id="simSummaryBadge"></div>
+      </div>
+      <div class="detail-empty" id="simEmpty">Load an account above to start simulating.</div>
+      <div class="sim-body" id="simBody">
+        <div class="whatif-box" style="margin:0;">
+          <div class="whatif-head"><div class="whatif-title">Adjust risk signals</div></div>
+          <div class="whatif-note">These are the same signal categories the model was trained to weigh — moving the sliders projects how the score would shift, using a transparent additive rule.</div>
+
+          <div class="whatif-row">
+            <div class="whatif-label"><span>Additional devices shared with flagged accounts</span><span id="wfDevVal">0</span></div>
+            <input type="range" id="wfDev" min="0" max="5" value="0" step="1" oninput="updateWhatIf()">
+          </div>
+          <div class="whatif-row">
+            <div class="whatif-label"><span>Additional rapid outbound transfers</span><span id="wfTxnVal">0</span></div>
+            <input type="range" id="wfTxn" min="0" max="10" value="0" step="1" oninput="updateWhatIf()">
+          </div>
+
+          <div class="whatif-result">
+            <div>
+              <div class="lbl">Simulated risk score</div>
+              <div class="whatif-delta flat" id="wfDelta">no change</div>
+            </div>
+            <div class="score" id="wfScore">0.0%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== 6. BANK BREAKDOWN =================== -->
+  <section class="tab-section" id="sec-banks">
+    <div class="section-title">
+      <h1>Bank-wise Risk Breakdown</h1>
+      <p>How flagged accounts are distributed across issuing banks, so patterns concentrated in a particular bank are easy to spot.</p>
+    </div>
+    <div class="panel bank-panel" style="margin-top:0;">
+      <div class="panel-head">
+        <h2><svg class="ph-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10 12 4l9 6M5 10v9M19 10v9M9 10v9M15 10v9M3 19h18"/></svg> Bank-wise Risk Breakdown</h2>
+        <div class="legend"><span><span class="lgd" style="background:var(--teal)"></span>share flagged</span></div>
+      </div>
+      <div class="bank-list" id="bankList"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>FIN-AI — Heterogeneous GNN Fraud Intelligence · Created by NEURAL NEXUS</footer>
+
+</div><!-- /appRoot -->
+
+<script>
+const D = FRAUD_DATA;
+document.getElementById('dataStamp').textContent = D.summary.n_accounts + ' accounts indexed';
+
+// ---------- LANDING SCREEN ----------
+document.getElementById('getStartedBtn').addEventListener('click', () => {
+  document.getElementById('landing').style.display = 'none';
+  window.scrollTo(0,0);
+});
+
+// ---------- TAB NAVIGATION ----------
+const tabButtons = document.querySelectorAll('.tab-btn');
+const tabSections = document.querySelectorAll('.tab-section');
+let ringsBuilt = false;
+function switchTab(target, scroll){
+  tabButtons.forEach(b => b.classList.toggle('active', b.dataset.target === target));
+  tabSections.forEach(s => s.classList.toggle('visible', s.id === target));
+  if(target === 'sec-rings' && !ringsBuilt){
+    buildRings(0);
+    ringsBuilt = true;
+  }
+  if(scroll) document.getElementById(target).scrollIntoView({behavior:'smooth', block:'start'});
+}
+tabButtons.forEach(b => b.addEventListener('click', () => switchTab(b.dataset.target)));
+
+// jump to an account's full detail in the AI Analysis tab, from anywhere in the app
+function openAccount(id){
+  switchTab('sec-ai', true);
+  document.getElementById('searchInput').value = id;
+  runSearch();
+}
+
+// ---------- OVERVIEW ----------
+const ov = document.getElementById('overview');
+const stats = [
+  ["Accounts", D.summary.n_accounts, false],
+  ["Devices", D.summary.n_devices, false],
+  ["Merchants", D.summary.n_merchants, false],
+  ["Locations", D.summary.n_locations, false],
+  ["Flagged (risk > 0.5)", D.summary.flagged_above_half, true],
+  ["Fraud rate", (D.summary.fraud_rate*100).toFixed(1)+"%", true],
+];
+ov.innerHTML = stats.map(s => `
+  <div class="stat ${s[2] ? 'warn':''}">
+    <div class="val">${s[1]}</div>
+    <div class="lbl">${s[0]}</div>
+  </div>`).join('') + (D.financial_impact ? `
+  <div class="stat impact">
+    <div class="val">₹${(D.financial_impact.flagged_volume/1000).toFixed(1)}K</div>
+    <div class="lbl">Flagged transaction volume</div>
+  </div>` : '');
+
+// ---------- ACCOUNT LOOKUP INDEX ----------
+const accIndex = {};
+D.accounts.forEach(a => accIndex[a.id] = a);
+const devIndex = D.devices, merIndex = D.merchants, locIndex = D.locations;
+const reasonsIndex = {};
+D.top_risk.forEach(r => { if(r.reasons) reasonsIndex[r.id] = r.reasons; });
+
+// datalist for search autocomplete (top risk only, to keep it light)
+document.getElementById('acctList').innerHTML =
+  D.top_risk.map(r => `<option value="${r.id}">`).join('');
+
+// ring lookup: account -> ring object
+const ringOf = {};
+D.fraud_rings.forEach(r => r.members.forEach(m => ringOf[m] = r));
+
+// ---------- NETWORK GRAPH ----------
+function riskColor(score){
+  // interpolate gray-blue (#4A5468) -> red (#E2472B)
+  const c1 = [74,84,104], c2 = [226,71,43];
+  const t = Math.max(0, Math.min(1, score));
+  const c = c1.map((v,i) => Math.round(v + (c2[i]-v)*t));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+const typeColor = { device:"#5C7A9E", merchant:"#8A8347", location:"#5C9E8A" };
+const typeShape = { account:"dot", device:"square", merchant:"triangle", location:"diamond" };
+
+const visNodes = D.viz_nodes.map(n => ({
+  id: n.id,
+  label: n.type === 'account' ? n.id : '',
+  shape: typeShape[n.type] || "dot",
+  color: n.type === 'account' ? riskColor(n.risk_score||0) : typeColor[n.type],
+  size: n.type === 'account' ? (10 + (n.risk_score||0)*14) : 9,
+  font: { color: '#8993A8', size: 10 }
+}));
+const visEdges = D.viz_edges.map(e => ({
+  from: e.source, to: e.target,
+  color: { color: '#2E3750', opacity: 0.55 },
+  width: e.type === 'transfers_to' ? 1.4 : 0.8
+}));
+
+const nodesDS = new vis.DataSet(visNodes);
+const edgesDS = new vis.DataSet(visEdges);
+const network = new vis.Network(document.getElementById('network'), {nodes:nodesDS, edges:edgesDS}, {
+  physics: { stabilization: true, barnesHut: { gravitationalConstant: -3000, springLength: 90 } },
+  interaction: { hover: true },
+  layout: { improvedLayout: true }
+});
+
+network.on("click", function(params){
+  if(params.nodes.length){
+    openAccount(params.nodes[0]);
+  }
+});
+
+// ---------- AI RISK LIST ----------
+const riskList = document.getElementById('riskList');
+riskList.innerHTML = D.top_risk.map((r, i) => `
+  <div class="risk-item" onclick="openAccount('${r.id}')">
+    <div class="risk-rank">${i+1}</div>
+    <div class="risk-bar-wrap">
+      <div class="risk-id">${r.id}${r.is_fraud ? ' <span style="color:var(--red)">●</span>' : ''}</div>
+      <div class="risk-bar-bg"><div class="risk-bar-fill" style="width:${(r.risk_score*100).toFixed(0)}%"></div></div>
+    </div>
+    <div class="risk-score">${r.risk_score.toFixed(2)}</div>
+  </div>
+`).join('');
+
+// ---------- BANK-WISE BREAKDOWN ----------
+const bankList = document.getElementById('bankList');
+if(D.bank_stats && D.bank_stats.length){
+  const maxRate = Math.max(...D.bank_stats.map(b => b.flag_rate));
+  const sorted = [...D.bank_stats].sort((a,b) => b.flag_rate - a.flag_rate);
+  bankList.innerHTML = sorted.map(b => `
+    <div class="bank-row">
+      <div class="bank-code-badge">${(b.bank_code || b.bank_name.split(' ').map(w=>w[0]).join('')).toUpperCase()}</div>
+      <div class="bank-info">
+        <div class="bank-name-row">
+          <span class="n">${b.bank_name}</span>
+          <span class="meta">${b.flagged} / ${b.total} flagged</span>
+        </div>
+        <div class="bank-bar-bg"><div class="bank-bar-fill" style="width:${maxRate ? (b.flag_rate/maxRate*100).toFixed(0) : 0}%"></div></div>
+      </div>
+      <div class="bank-rate">${b.flag_rate}%</div>
+    </div>
+  `).join('');
+} else {
+  bankList.innerHTML = `<div class="detail-empty">No bank-wise data available in this export.</div>`;
+}
+
+// ---------- WHAT-IF SIMULATOR (standalone tab) ----------
+let simAccountId = null;
+function loadSimAccount(id){
+  id = (id || document.getElementById('simInput').value.trim());
+  const acc = accIndex[id];
+  const empty = document.getElementById('simEmpty');
+  const summary = document.getElementById('simSummary');
+  const body = document.getElementById('simBody');
+
+  if(!acc){
+    simAccountId = null;
+    empty.style.display = 'block';
+    empty.textContent = id ? `No account found with ID "${id}". Try one from the AI Risk Ranking list.` : 'Load an account above to start simulating.';
+    summary.classList.remove('show');
+    body.classList.remove('show');
+    return;
+  }
+
+  simAccountId = id;
+  document.getElementById('simInput').value = id;
+  empty.style.display = 'none';
+  summary.classList.add('show');
+  body.classList.add('show');
+
+  const isHigh = acc.risk_score > 0.5;
+  document.getElementById('simSummaryId').textContent = id;
+  document.getElementById('simSummaryMeta').textContent = `${acc.account_type} account${acc.bank_name ? ' · ' + acc.bank_name : ''} · baseline risk ${(acc.risk_score*100).toFixed(1)}%`;
+  const badge = document.getElementById('simSummaryBadge');
+  badge.textContent = isHigh ? 'HIGH RISK' : 'LOW RISK';
+  badge.className = 'badge ' + (isHigh ? 'high' : 'low');
+
+  document.getElementById('wfDev').value = 0;
+  document.getElementById('wfTxn').value = 0;
+  updateWhatIf();
+}
+function updateWhatIf(){
+  if(!simAccountId) return;
+  const baseRisk = accIndex[simAccountId].risk_score;
+  const dev = parseInt(document.getElementById('wfDev').value);
+  const txn = parseInt(document.getElementById('wfTxn').value);
+  document.getElementById('wfDevVal').textContent = dev;
+  document.getElementById('wfTxnVal').textContent = txn;
+
+  // simple transparent additive rule, same signals the model was trained to weigh —
+  // NOT a live re-run of the GNN, just an illustrative projection
+  const bump = (dev * 0.055) + (txn * 0.025);
+  const simulated = Math.min(0.99, baseRisk + bump);
+
+  const scoreEl = document.getElementById('wfScore');
+  const deltaEl = document.getElementById('wfDelta');
+  scoreEl.textContent = (simulated*100).toFixed(1) + '%';
+  scoreEl.style.color = simulated > 0.7 ? 'var(--red)' : (simulated > 0.5 ? '#F0A296' : 'var(--text)');
+
+  if(bump === 0){
+    deltaEl.textContent = 'no change';
+    deltaEl.className = 'whatif-delta flat';
+  } else {
+    deltaEl.textContent = '+' + (bump*100).toFixed(1) + ' pts from baseline';
+    deltaEl.className = 'whatif-delta up';
+  }
+}
+
+// ---------- SEARCH / DETAIL ----------
+function runSearch(){
+  const id = document.getElementById('searchInput').value.trim();
+  const body = document.getElementById('detailBody');
+  const empty = document.getElementById('detailEmpty');
+  const acc = accIndex[id];
+
+  if(!acc){
+    empty.style.display = 'block';
+    empty.textContent = id ? `No account found with ID "${id}". Try one from the AI Risk Ranking list.` : 'Enter an account ID above.';
+    body.classList.remove('show');
+    return;
+  }
+  empty.style.display = 'none';
+  body.classList.add('show');
+
+  const isHigh = acc.risk_score > 0.5;
+  const connected = D.edges.filter(e => e.source === id || e.target === id);
+  const devices = connected.filter(e=>e.type==='uses').map(e => e.target === id ? e.source : e.target);
+  const locs = connected.filter(e=>e.type==='located_in').map(e => e.target === id ? e.source : e.target);
+  const merchs = connected.filter(e=>e.type==='transacts_with').map(e => e.target === id ? e.source : e.target);
+  const accLinks = connected.filter(e=>e.type==='transfers_to');
+
+  const ring = ringOf[id];
+
+  body.innerHTML = `
+    <div class="detail-top">
+      <div>
+        <div class="detail-id">${id}</div>
+        <div class="mono" style="color:var(--muted);font-size:12px;">${acc.account_type} account · ${acc.account_age_days} days old${acc.bank_name ? ' · ' + acc.bank_name : ''}</div>
+      </div>
+      <div class="badge ${isHigh?'high':'low'}">${isHigh ? 'HIGH RISK' : 'LOW RISK'} · ${(acc.risk_score*100).toFixed(1)}%</div>
+    </div>
+
+    ${D.narratives && D.narratives[id] ? `
+    <div class="narrative-box">
+      <div class="narrative-label">⚡ AI CONCLUSION — WHY THIS ACCOUNT WAS FLAGGED</div>
+      <div class="narrative-text">${D.narratives[id]}</div>
+      ${reasonsIndex[id] && reasonsIndex[id].length ? `
+      <ul style="margin:12px 0 0 18px;font-size:13px;line-height:1.8;color:#D9B9B2;">
+        ${reasonsIndex[id].map(r => `<li>${r}</li>`).join('')}
+      </ul>` : ''}
+    </div>` : ''}
+
+    <div class="conn-section" style="margin-top:0;">
+      <span class="conn-chip" style="cursor:pointer;border-color:#3A455E;" onclick="switchTab('sec-simulator', true); loadSimAccount('${id}');">🧪 Test this account in the What-If Simulator →</span>
+    </div>
+
+    <div class="kv-grid">
+      <div class="kv"><div class="k">Avg transaction</div><div class="v">₹${acc.avg_txn_amount}</div></div>
+      <div class="kv"><div class="k">Devices used</div><div class="v">${acc.n_devices}</div></div>
+      <div class="kv"><div class="k">Outbound transfers</div><div class="v">${acc.n_transfers_out}</div></div>
+      <div class="kv"><div class="k">Inbound transfers</div><div class="v">${acc.n_transfers_in}</div></div>
+      ${acc.bank_name ? `
+      <div class="kv"><div class="k">Bank</div><div class="v">${acc.bank_name}</div></div>
+      <div class="kv"><div class="k">Account number</div><div class="v">${acc.masked_account || '—'}</div></div>
+      <div class="kv"><div class="k">UPI ID</div><div class="v">${acc.upi_id || '—'}</div></div>
+      <div class="kv"><div class="k">Bank code</div><div class="v">${acc.bank_code || '—'}</div></div>` : ''}
+    </div>
+
+    <div class="conn-section">
+      <h3>Devices (${devices.length})</h3>
+      <div class="conn-list">${devices.map(d=>`<span class="conn-chip">${d} · ${devIndex[d]?.type||'?'}</span>`).join('') || '<span class="conn-chip">none</span>'}</div>
+
+      <h3>Location</h3>
+      <div class="conn-list">${locs.map(l=>{
+        const loc = locIndex[l];
+        const cityTxt = loc?.city ? `${loc.city}, ` : '';
+        return `<span class="conn-chip">${cityTxt}${loc?.region||'?'}${loc?.is_high_risk_zone ? ' ⚠️':''}</span>`;
+      }).join('') || '<span class="conn-chip">none</span>'}</div>
+
+      <h3>Merchants transacted with (${merchs.length})</h3>
+      <div class="conn-list">${merchs.map(m=>{
+        const mer = merIndex[m];
+        return `<span class="conn-chip">${mer?.display_name || m} · ${mer?.category||'?'}</span>`;
+      }).join('') || '<span class="conn-chip">none</span>'}</div>
+
+      <h3>Connected accounts (transfers, ${accLinks.length})</h3>
+      <div class="conn-list">${accLinks.map(e=>{
+        const other = e.source===id?e.target:e.source;
+        const r = accIndex[other];
+        return `<span class="conn-chip acc">${other}${r && r.risk_score>0.5 ? ' 🚩':''}</span>`;
+      }).join('') || '<span class="conn-chip">none</span>'}</div>
+    </div>
+
+    ${ring ? `<div class="ring-alert">🚨 This account belongs to a detected fraud ring of <strong>${ring.size}</strong> accounts, average risk <strong>${(ring.avg_risk*100).toFixed(0)}%</strong>.</div>` : ''}
+  `;
+}
+
+// ---------- FRAUD RINGS (risk-threshold filter + mini network graphs) ----------
+const ringsList = document.getElementById('ringsList');
+function jumpToAccount(id){
+  openAccount(id);
+}
+
+function onRingThreshChange(){
+  const v = parseInt(document.getElementById('ringThresh').value);
+  document.getElementById('ringThreshLbl').textContent =
+    v === 0 ? 'Showing all rings — 0%+' : `Showing rings ≥ ${v}% avg risk`;
+  buildRings(v);
+}
+
+function buildRings(thresholdPct){
+  const threshold = thresholdPct / 100;
+  const rings = D.fraud_rings
+    .filter(r => r.avg_risk >= threshold)
+    .sort((a,b) => b.avg_risk - a.avg_risk);
+
+  if(rings.length === 0){
+    ringsList.innerHTML = `<div class="detail-empty">No fraud rings detected at or above this risk threshold. Try lowering the slider.</div>`;
+    return;
+  }
+
+  ringsList.innerHTML = rings.map((r,i) => {
+    let timelineHtml = '';
+    if(r.timeline && r.timeline.length){
+      const ages = r.timeline.map(t => t.age_days);
+      const min = Math.min(...ages), max = Math.max(...ages);
+      const span = Math.max(1, max - min);
+      const dots = r.timeline.map(t => {
+        const pct = ((t.age_days - min) / span) * 96 + 2;
+        return `<div class="timeline-dot" style="left:${pct}%" title="${t.id} · created ${t.age_days}d ago"></div>`;
+      }).join('');
+      timelineHtml = `
+        <div class="ring-timeline">
+          <div class="ring-timeline-label">⏱ Account creation window — all ${r.size} accounts opened within ${r.age_span} day(s) of each other</div>
+          <div class="timeline-track">${dots}</div>
+        </div>`;
+    }
+    const bankSet = new Set(r.members.map(m => accIndex[m]?.bank_name).filter(Boolean));
+    const bankTxt = bankSet.size ? `Spans ${bankSet.size} bank(s): ${[...bankSet].slice(0,4).join(', ')}${bankSet.size>4?'…':''}` : '';
+    return `
+    <div class="ring-card">
+      <div class="ring-card-top">
+        <div class="ring-title">Ring #${i+1} — ${r.size} accounts</div>
+        <div class="ring-meta">avg risk ${(r.avg_risk*100).toFixed(0)}%</div>
+      </div>
+      <div id="ring-net-${i}" class="ring-network${r.size <= 5 ? ' small' : ''}"></div>
+      <div class="ring-hint">${bankTxt}${bankTxt ? ' · ' : ''}Click a dot to open that account. Drag to explore, scroll to zoom.</div>
+      ${timelineHtml}
+    </div>`;
+  }).join('');
+
+  // build a live vis-network graph for each ring, using real transfer edges between members
+  rings.forEach((r, i) => {
+    const memberSet = new Set(r.members);
+    const showLabels = r.size <= 30;
+
+    const ringNodes = r.members.map(m => {
+      const acc = accIndex[m] || {};
+      return {
+        id: m,
+        label: showLabels ? m : '',
+        title: `${m} · ${acc.bank_name || ''} · risk ${((acc.risk_score||0)*100).toFixed(0)}%`,
+        shape: 'dot',
+        color: riskColor(acc.risk_score || 0),
+        size: 8 + (acc.risk_score||0) * 10,
+        font: { color: '#8993A8', size: 10 }
+      };
+    });
+
+    const ringEdges = D.edges
+      .filter(e => e.type === 'transfers_to' && memberSet.has(e.source) && memberSet.has(e.target))
+      .map(e => ({ from: e.source, to: e.target, arrows: 'to', color: { color: '#3A455E', opacity: 0.6 }, width: 1 }));
+
+    const container = document.getElementById(`ring-net-${i}`);
+    if(!container) return;
+    const ringNet = new vis.Network(container, {
+      nodes: new vis.DataSet(ringNodes),
+      edges: new vis.DataSet(ringEdges)
+    }, {
+      physics: { stabilization: true, barnesHut: { gravitationalConstant: -2000, springLength: 70 } },
+      interaction: { hover: true, zoomView: true, dragView: true },
+      layout: { improvedLayout: r.size <= 200 }
+    });
+    ringNet.on('click', function(params){
+      if(params.nodes.length) jumpToAccount(params.nodes[0]);
+    });
+  });
+}
+
+// ---------- LIVE FEED SIMULATION ----------
+const feedList = document.getElementById('feedList');
+let feedIdx = 0;
+function pushFeedEvent(){
+  if(!D.feed_events || !D.feed_events.length) return;
+  const e = D.feed_events[feedIdx % D.feed_events.length];
+  feedIdx++;
+  const row = document.createElement('div');
+  row.className = 'feed-row' + (e.risky ? ' risky' : '');
+  const verb = e.type === 'transfer' ? 'transferred ₹' : 'paid ₹';
+  const time = new Date().toLocaleTimeString();
+  row.innerHTML = `
+    <span class="feed-dot"></span>
+    <span class="feed-text"><strong>${e.account}</strong> ${verb}${Math.round(e.amount)} to <strong>${e.counterpart}</strong></span>
+    ${e.risky ? '<span class="feed-badge">FLAGGED</span>' : ''}
+    <span class="feed-time">${time}</span>
+  `;
+  feedList.insertBefore(row, feedList.firstChild);
+  while(feedList.children.length > 25) feedList.removeChild(feedList.lastChild);
+}
+for(let i=0;i<6;i++) pushFeedEvent();
+setInterval(pushFeedEvent, 2200);
+
+// ---------- DEFAULT TAB ----------
+switchTab('sec-network');
+</script>
+</body>
+</html>
